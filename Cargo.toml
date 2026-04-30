@@ -1,0 +1,9 @@
+[package]
+name = "scroll_remap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+evdev = "0.12"
+uinput = "0.1"
+anyhow = "1"

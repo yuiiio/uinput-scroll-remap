@@ -1,11 +1,60 @@
 use anyhow::Result;
 use evdev::{Device, InputEventKind, Key, RelativeAxisType, EventType};
-use std::thread;
-use std::time::Duration;
 
 fn emit(dev: &mut uinput::Device, ty: EventType, code: u16, val: i32) -> anyhow::Result<()> {
     dev.write(ty.0 as i32, code as i32, val)?;
     Ok(())
+}
+
+struct ScrollState {
+    acc_x: f32,
+    acc_y: f32,
+}
+
+impl ScrollState {
+    fn new() -> Self {
+        Self { acc_x: 0.0, acc_y: 0.0 }
+    }
+
+    fn feed(
+        &mut self,
+        dx: i32,
+        dy: i32,
+        udev: &mut uinput::Device,
+    ) -> anyhow::Result<()> {
+        let sensitivity = 0.03; // ←超重要（調整ポイント）
+
+        self.acc_x += dx as f32 * sensitivity;
+        self.acc_y += dy as f32 * sensitivity;
+
+        // 横スクロール
+        while self.acc_x.abs() >= 1.0 {
+            let step = self.acc_x.signum() as i32;
+
+            udev.write(
+                EventType::RELATIVE.0 as i32,
+                RelativeAxisType::REL_HWHEEL.0 as i32,
+                -step,
+            )?;
+
+            self.acc_x -= step as f32;
+        }
+
+        // 縦スクロール
+        while self.acc_y.abs() >= 1.0 {
+            let step = self.acc_y.signum() as i32;
+
+            udev.write(
+                EventType::RELATIVE.0 as i32,
+                RelativeAxisType::REL_WHEEL.0 as i32,
+                step,
+            )?;
+
+            self.acc_y -= step as f32;
+        }
+
+        Ok(())
+    }
 }
 
 fn main() -> Result<()> {
@@ -28,6 +77,7 @@ fn main() -> Result<()> {
         .create()?;
 
     let mut scroll_mode = false;
+    let mut scroll = ScrollState::new();
 
     loop {
         for ev in dev.fetch_events()? {
@@ -40,7 +90,7 @@ fn main() -> Result<()> {
 
                 InputEventKind::RelAxis(RelativeAxisType::REL_X) => {
                     if scroll_mode {
-                        emit(&mut udev, EventType::RELATIVE, RelativeAxisType::REL_HWHEEL.0, -ev.value()/4)?;
+                        scroll.feed(ev.value(), 0, &mut udev)?;
                     } else {
                         emit(&mut udev, EventType::RELATIVE, RelativeAxisType::REL_X.0, ev.value())?;
                     }
@@ -48,7 +98,7 @@ fn main() -> Result<()> {
 
                 InputEventKind::RelAxis(RelativeAxisType::REL_Y) => {
                     if scroll_mode {
-                        emit(&mut udev, EventType::RELATIVE, RelativeAxisType::REL_WHEEL.0, ev.value()/4)?;
+                        scroll.feed(0, ev.value(), &mut udev)?;
                     } else {
                         emit(&mut udev, EventType::RELATIVE, RelativeAxisType::REL_Y.0, ev.value())?;
                     }
@@ -63,8 +113,5 @@ fn main() -> Result<()> {
         }
 
         udev.synchronize()?;
-
-        // CPU食いすぎ防止
-        thread::sleep(Duration::from_millis(1));
     }
 }

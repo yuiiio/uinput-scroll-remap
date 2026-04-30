@@ -1,20 +1,21 @@
 use anyhow::Result;
-use evdev::{Device, InputEventKind, Key, RelativeAxisType};
-use std::fs::File;
+use evdev::{Device, InputEventKind, Key, RelativeAxisType, EventType};
 use std::thread;
 use std::time::Duration;
 
+fn emit(dev: &mut uinput::Device, ty: EventType, code: u16, val: i32) -> anyhow::Result<()> {
+    dev.write(ty.0 as i32, code as i32, val)?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
-    // 入力デバイス（適宜変更）
     let path = "/dev/input/event2";
     let mut dev = Device::open(path)?;
 
     println!("Using device: {}", dev.name().unwrap_or("unknown"));
 
-    // grab（他にイベントを流さない）
     dev.grab()?;
 
-    // uinput 仮想デバイス作成
     let mut udev = uinput::default()?
         .name("scroll-remap-virtual-mouse")?
         .event(uinput::event::relative::Position::X)?
@@ -31,60 +32,32 @@ fn main() -> Result<()> {
     loop {
         for ev in dev.fetch_events()? {
             match ev.kind() {
-                InputEventKind::Key(Key::BTN_MIDDLE) => {
+                InputEventKind::Key(Key::BTN_SIDE) => {
                     scroll_mode = ev.value() != 0;
 
-                    // 中クリック自体も送りたい場合
-                    udev.write(
-                        uinput::event::controller::Mouse::Middle,
-                        ev.value(),
-                    )?;
+                    // emit(&mut udev, EventType::KEY, Key::BTN_SIDE.0, ev.value())?;
                 }
 
                 InputEventKind::RelAxis(RelativeAxisType::REL_X) => {
                     if scroll_mode {
-                        // 横スクロール
-                        udev.write(
-                            uinput::event::relative::Wheel::Horizontal,
-                            ev.value(),
-                        )?;
+                        emit(&mut udev, EventType::RELATIVE, RelativeAxisType::REL_HWHEEL.0, -ev.value()/4)?;
                     } else {
-                        udev.write(
-                            uinput::event::relative::Position::X,
-                            ev.value(),
-                        )?;
+                        emit(&mut udev, EventType::RELATIVE, RelativeAxisType::REL_X.0, ev.value())?;
                     }
                 }
 
                 InputEventKind::RelAxis(RelativeAxisType::REL_Y) => {
                     if scroll_mode {
-                        // 縦スクロール（符号反転すると自然なことが多い）
-                        udev.write(
-                            uinput::event::relative::Wheel::Vertical,
-                            -ev.value(),
-                        )?;
+                        emit(&mut udev, EventType::RELATIVE, RelativeAxisType::REL_WHEEL.0, ev.value()/4)?;
                     } else {
-                        udev.write(
-                            uinput::event::relative::Position::Y,
-                            ev.value(),
-                        )?;
+                        emit(&mut udev, EventType::RELATIVE, RelativeAxisType::REL_Y.0, ev.value())?;
                     }
                 }
 
-                InputEventKind::Key(Key::BTN_LEFT) => {
-                    udev.write(
-                        uinput::event::controller::Mouse::Left,
-                        ev.value(),
-                    )?;
+                // 既知のもの
+                InputEventKind::Key(k) => {
+                    emit(&mut udev, EventType::KEY, k.0, ev.value())?;
                 }
-
-                InputEventKind::Key(Key::BTN_RIGHT) => {
-                    udev.write(
-                        uinput::event::controller::Mouse::Right,
-                        ev.value(),
-                    )?;
-                }
-
                 _ => {}
             }
         }

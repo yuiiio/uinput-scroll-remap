@@ -1,9 +1,32 @@
 use evdev::{Device, InputEvent, InputEventKind, RelativeAxisType};
+use std::env;
 use std::error::Error;
+use std::process;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // 1. 物理マウスのデバイスファイルを開く (環境に合わせて変更してください)
-    let mut phys_mouse = Device::open("/dev/input/event4")?;
+    // 1. コマンドライン引数を取得
+    let args: Vec<String> = env::args().collect();
+
+    // 第一引数があればそれをデバイスパスとし、無ければデフォルト値を使う
+    let device_path = if args.len() > 1 {
+        &args[1]
+    } else {
+        eprintln!("使い方: sudo cargo run -- /dev/input/eventX");
+        process::exit(1);
+    };
+
+    println!("デバイスファイルを開いています: {}", device_path);
+
+    // 2. 物理マウスのデバイスファイルを開く
+    let mut phys_mouse = match Device::open(device_path) {
+        Ok(dev) => dev,
+        Err(e) => {
+            eprintln!("エラー: デバイス '{}' を開けませんでした: {}", device_path, e);
+            eprintln!("使い方: sudo cargo run -- /dev/input/eventX");
+            process::exit(1);
+        }
+    };
+
     phys_mouse.grab()?; // 他のアプリに生の入力がいかないように独占
 
     // 2. uinputで仮想マウスを作成

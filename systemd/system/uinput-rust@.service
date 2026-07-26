@@ -1,0 +1,13 @@
+[Unit]
+Description=Swap Mouse Axis and Buttons via uinput-rust for %I
+After=multi-user.target
+
+[Service]
+Type=simple
+# %i には udev から渡されたデバイスパス (/dev/input/eventX) が入ります
+ExecStart=/home/haibane/uinput-rust/target/release/uinput-rust /dev/input/%i
+Restart=always
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target

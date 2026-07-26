@@ -1,0 +1,2 @@
+# 該当のマウスが追加されたら systemd サービスを起動する
+ACTION=="add", SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="047d", ENV{ID_MODEL_ID}=="8018", ENV{ID_INPUT_MOUSE}=="1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="uinput-rust@%k.service"

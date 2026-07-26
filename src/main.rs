@@ -38,32 +38,53 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("軸入れ替えマウスの監視を開始しました...");
 
-    // 状態保持用変数（ループの外に配置します）
-    // 前回のスクロール値（1: 上, -1: 下, 0: 未検出/リセット）
-    let mut last_wheel_dir: i32 = 0;
+    // スクロール量の蓄積用変数（ループの外に配置）
+    let mut wheel_accumulator: i32 = 0;
+    let mut wheel_hi_res_accumulator: i32 = 0;
 
     // 3. イベントループ
     loop {
         for event in phys_mouse.fetch_events()? {
-            let swapped_event = event;
+            let mut swapped_event = event;
+            let ev_type = event.event_type();
 
             match event.kind() {
                 // 相対座標（REL）のX軸とY軸を入れ替える
                 InputEventKind::RelAxis(axis) => {
                     match axis {
-                        // ★ スクロールホイール（縦スクロール）の制御を追加
+                        // ★ 通常スクロール (REL_WHEEL)
                         RelativeAxisType::REL_WHEEL => {
-                            let current_dir = event.value(); // 通常、1 (上) か -1 (下)
+                            wheel_accumulator += event.value();
+                            let output_val = wheel_accumulator / 2; // 移動量を1/2にする
 
-                            if current_dir == last_wheel_dir && current_dir != 0 {
-                                // 前回の方向と同じ（2回連続入力された！）
-                                // この時だけイベントをそのまま流し、判定をリセットする
-                                last_wheel_dir = 0; 
+                            if output_val != 0 {
+                                wheel_accumulator %= 2; // 出力に使わなかった余りを蓄積に残す
+                                swapped_event = InputEvent::new(
+                                    ev_type,
+                                    RelativeAxisType::REL_WHEEL.0,
+                                    output_val,
+                                );
                             } else {
-                                // 1回目の入力、または逆方向への入力
-                                // 今回の方向を記憶して、このイベントの出力をスキップする
-                                last_wheel_dir = current_dir;
-                                continue; 
+                                // まだ1/2に達していない場合は出力をスキップ
+                                continue;
+                            }
+                        }
+
+                        // ★ 高解像度スクロール (REL_WHEEL_HI_RES)
+                        RelativeAxisType::REL_WHEEL_HI_RES => {
+                            wheel_hi_res_accumulator += event.value();
+                            let output_val = wheel_hi_res_accumulator / 2; // 移動量を1/2にする
+
+                            if output_val != 0 {
+                                wheel_hi_res_accumulator %= 2; // 出力に使わなかった余りを蓄積に残す
+                                swapped_event = InputEvent::new(
+                                    ev_type,
+                                    RelativeAxisType::REL_WHEEL_HI_RES.0,
+                                    output_val,
+                                );
+                            } else {
+                                // まだ1/2に達していない場合は出力をスキップ
+                                continue;
                             }
                         }
                         _ => {}

@@ -38,71 +38,37 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("軸入れ替えマウスの監視を開始しました...");
 
+    // 状態保持用変数（ループの外に配置します）
+    // 前回のスクロール値（1: 上, -1: 下, 0: 未検出/リセット）
+    let mut last_wheel_dir: i32 = 0;
+
     // 3. イベントループ
     loop {
         for event in phys_mouse.fetch_events()? {
-            let mut swapped_event = event;
-            // Linuxカーネルのイベントタイプ「EV_REL (相対座標)」を取得
-            let ev_type = event.event_type(); 
+            let swapped_event = event;
 
             match event.kind() {
                 // 相対座標（REL）のX軸とY軸を入れ替える
                 InputEventKind::RelAxis(axis) => {
                     match axis {
-                        RelativeAxisType::REL_X => {
-                            // X軸の動きを、Y軸のコード（REL_Yの生値）で新しく作り直す
-                            swapped_event = InputEvent::new(
-                                ev_type,
-                                RelativeAxisType::REL_Y.0,
-                                event.value() * -1,
-                            );
-                        }
-                        RelativeAxisType::REL_Y => {
-                            // Y軸の動きを、X軸のコード（REL_Xの生値）で新しく作り直す
-                            swapped_event = InputEvent::new(
-                                ev_type,
-                                RelativeAxisType::REL_X.0,
-                                event.value(),
-                            );
-                        }
-                        _ => {}
-                    }
-                },
-                // ボタン（キー入力）の入れ替え
-                InputEventKind::Key(key) => {
-                    match key {
-                        evdev::Key::BTN_LEFT => {
-                            swapped_event = InputEvent::new(
-                                ev_type,
-                                evdev::Key::BTN_RIGHT.code(),
-                                event.value(),
-                            );
-                        }
-                        evdev::Key::BTN_RIGHT => {
-                            swapped_event = InputEvent::new(
-                                ev_type,
-                                evdev::Key::BTN_MIDDLE.code(),
-                                event.value(),
-                            );
-                        }
-                        evdev::Key::BTN_MIDDLE => {
-                            swapped_event = InputEvent::new(
-                                ev_type,
-                                evdev::Key::BTN_LEFT.code(),
-                                event.value(),
-                            );
-                        }
-                        evdev::Key::BTN_SIDE => {
-                            swapped_event = InputEvent::new(
-                                ev_type,
-                                evdev::Key::BTN_MIDDLE.code(),
-                                event.value(),
-                            );
-                        }
-                        _ => {}
-                    }
-                },
+                        // ★ スクロールホイール（縦スクロール）の制御を追加
+                        RelativeAxisType::REL_WHEEL => {
+                            let current_dir = event.value(); // 通常、1 (上) か -1 (下)
 
+                            if current_dir == last_wheel_dir && current_dir != 0 {
+                                // 前回の方向と同じ（2回連続入力された！）
+                                // この時だけイベントをそのまま流し、判定をリセットする
+                                last_wheel_dir = 0; 
+                            } else {
+                                // 1回目の入力、または逆方向への入力
+                                // 今回の方向を記憶して、このイベントの出力をスキップする
+                                last_wheel_dir = current_dir;
+                                continue; 
+                            }
+                        }
+                        _ => {}
+                    }
+                },
                 _ => {},
             }
 
